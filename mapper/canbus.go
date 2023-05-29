@@ -2,7 +2,7 @@ package mapper
 
 import (
 	"encoding/binary"
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/antonmedv/expr/vm"
@@ -12,7 +12,7 @@ import (
 	"go.nanomsg.org/mangos/v3"
 	"go.uber.org/zap"
 
-	"github.com/brutella/can"
+	"go.einride.tech/can"
 	"go.einride.tech/can/pkg/dbc"
 )
 
@@ -25,7 +25,11 @@ type CanBusMapper struct {
 
 func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConfig) (*CanBusMapper, error) {
 	// parse DBC file and store mappings
-	dbc := readDBC(c.DbcFile)
+	db, err := readDBC(c.DbcFile)
+	if err != nil {
+		return nil, err
+	}
+
 	mappings := make(map[string]map[string]config.CanBusMappingConfig)
 	for _, m := range cmc {
 		_, present := mappings[m.Origin]
@@ -34,7 +38,7 @@ func NewCanBusMapper(c config.CanBusMapperConfig, cmc []config.CanBusMappingConf
 		}
 		mappings[m.Origin][m.Name] = m
 	}
-	return &CanBusMapper{config: c, protocol: config.CanBusType, dbc: dbc, canbusMappings: mappings}, nil
+	return &CanBusMapper{config: c, protocol: config.CanBusType, dbc: db, canbusMappings: mappings}, nil
 }
 
 func (m *CanBusMapper) Map(subscriber mangos.Socket, publisher mangos.Socket) {
@@ -46,20 +50,28 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	frm := createFrame(r)
+	frm, err := createFrame(r)
+	if err != nil {
+		return nil, err
+	}
 	// lookup mappings for frame
 	mappings, present := m.dbc[frm.ID]
 	if present {
+		logger.GetLogger().Info(
+			"Frame mapped",
+			zap.Uint32("id", frm.ID),
+			zap.String("mapping", string(mappings.Name)),
+		)
 		// apply all mappings
-		vm := vm.VM{}
+		v := vm.VM{}
 		for _, mapping := range mappings.Signals {
-			val := extractSignal(mapping, string(mappings.Name), frm)
+			val := extractSignal(mapping, string(mappings.Name), *frm)
 			mapping, present := m.canbusMappings[val.origin][val.name]
 
 			if present {
 				env := NewExpressionEnvironment()
 				env["value"] = val.value
-				output, err := runExpr(vm, env, mapping.MappingConfig)
+				output, err := runExpr(v, env, mapping.MappingConfig)
 				if err == nil {
 					u.AddValue(message.NewValue().WithPath(mapping.Path).WithValue(output))
 				} else {
@@ -71,24 +83,25 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 				}
 			}
 		}
+	} else {
+		logger.GetLogger().Warn(
+			"Couldn't map frame",
+			zap.Uint32("id", frm.ID),
+		)
 	}
 
 	// fmt.Println(u)
 	return result.AddUpdate(u), nil
 }
 
-func createFrame(r *message.Raw) can.Frame {
-	data := [8]uint8{}
-	copy(data[:], r.Value[8:16])
-	frm := can.Frame{
-		ID:     binary.BigEndian.Uint32(r.Value[0:4]),
-		Length: r.Value[4],
-		Flags:  r.Value[5],
-		Res0:   r.Value[6],
-		Res1:   r.Value[7],
-		Data:   data,
+func createFrame(r *message.Raw) (*can.Frame, error) {
+	frm := &can.Frame{}
+	err := frm.UnmarshalString(string(r.Value))
+	if err != nil {
+		return nil, err
 	}
-	return frm
+
+	return frm, nil
 }
 
 func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {
@@ -131,18 +144,22 @@ type Signal struct {
 }
 type DBC map[uint32]*dbc.MessageDef
 
-func readDBC(filename string) DBC {
+func readDBC(filename string) (DBC, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
 	}
 	defer file.Close()
-	source, err := ioutil.ReadAll(file)
+	source, err := io.ReadAll(file)
 	if err != nil {
 		logger.GetLogger().Error(err.Error())
 	}
 	parser := dbc.NewParser(file.Name(), source)
-	parser.Parse()
+	err = parser.Parse()
+	if err != nil {
+		return nil, err
+	}
+
 	messages := make(map[uint32]*dbc.MessageDef)
 	for _, def := range parser.Defs() {
 		switch def := def.(type) {
@@ -151,5 +168,5 @@ func readDBC(filename string) DBC {
 			messages[uint32(id)] = def
 		}
 	}
-	return messages
+	return messages, nil
 }

@@ -6,6 +6,7 @@ require (
 	github.com/Jeffail/gabs v1.4.0
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/antonmedv/expr v1.12.5
+	github.com/boatkit-io/n2k v0.0.0-refactor.11
 	github.com/brutella/can v0.0.2
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/fgrosse/zaptest v1.1.0
@@ -64,6 +65,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect

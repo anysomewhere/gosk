@@ -1,8 +1,6 @@
 package connector
 
 import (
-	"encoding/binary"
-
 	"github.com/munnik/gosk/config"
 	"github.com/munnik/gosk/logger"
 	"go.nanomsg.org/mangos/v3"
@@ -47,31 +45,21 @@ func (r *CanBusConnector) receive(stream chan<- []byte) error {
 	}
 	defer bus.Disconnect()
 	bus.SubscribeFunc(handleCanFrameStream(stream))
-	bus.ConnectAndPublish()
+	err = bus.ConnectAndPublish()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func handleCanFrameStream(stream chan<- []byte) can.HandlerFunc {
 	return func(frm can.Frame) {
 		// fmt.Println(frm)
-		bytes := FrameToBytes(frm)
+		bytes, err := can.Marshal(frm)
+		if err != nil {
+			return
+		}
 		stream <- bytes
 
 	}
-}
-
-func FrameToBytes(frm can.Frame) []byte {
-	bytes := make([]byte, 0, 8+frm.Length)
-	out := make([]byte, 4)
-	binary.BigEndian.PutUint32(out, frm.ID)
-
-	bytes = append(bytes, out...)
-	bytes = append(bytes, frm.Length)
-	bytes = append(bytes, frm.Flags)
-	bytes = append(bytes, frm.Res0)
-	bytes = append(bytes, frm.Res1)
-	for _, v := range frm.Data {
-		bytes = append(bytes, v)
-	}
-	return bytes
 }

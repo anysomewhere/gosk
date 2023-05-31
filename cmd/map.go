@@ -66,6 +66,8 @@ func doMap(cmd *cobra.Command, args []string) {
 		m, err = mapper.NewModbusMapper(c, rmc)
 	case config.NMEA0183Type:
 		m, err = mapper.NewNmea0183Mapper(c)
+	case config.NMEA2000Type:
+		m, err = mapper.NewNmea2000Mapper(c)
 	case config.CanBusType:
 		c2 := config.NewCanBusMapperConfig(cfgFile)
 		cmc := config.NewCanBusMappingConfig(cfgFile)

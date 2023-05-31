@@ -46,7 +46,10 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	s := message.NewSource().WithLabel(r.Connector).WithType(m.protocol).WithUuid(r.Uuid)
 	u := message.NewUpdate().WithSource(*s).WithTimestamp(r.Timestamp)
 
-	frm := createFrame(r)
+	frm, err := createFrame(r)
+	if err != nil {
+		return nil, err
+	}
 	// lookup mappings for frame
 	mappings, present := m.dbc[frm.ID]
 	if present {
@@ -77,18 +80,10 @@ func (m *CanBusMapper) DoMap(r *message.Raw) (*message.Mapped, error) {
 	return result.AddUpdate(u), nil
 }
 
-func createFrame(r *message.Raw) can.Frame {
-	data := [8]uint8{}
-	copy(data[:], r.Value[8:16])
-	frm := can.Frame{
-		ID:     binary.BigEndian.Uint32(r.Value[0:4]),
-		Length: r.Value[4],
-		Flags:  r.Value[5],
-		Res0:   r.Value[6],
-		Res1:   r.Value[7],
-		Data:   data,
-	}
-	return frm
+func createFrame(r *message.Raw) (frm can.Frame, err error) {
+	err = can.Unmarshal(r.Value, &frm)
+
+	return
 }
 
 func extractSignal(mapping dbc.SignalDef, origin string, frm can.Frame) Signal {

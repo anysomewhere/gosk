@@ -15,6 +15,11 @@ import (
 const (
 	// NMEA0183Type is used to identify the data as NMEA 0183 data
 	NMEA0183Type = "nmea0183"
+
+	// NMEA2000Type is used to identify the data as NMEA 2000 data
+
+	NMEA2000Type = "nmea2000"
+
 	// ModbusType is used to identify the data as Modbus data
 	ModbusType = "modbus"
 	// CSVType is used to identify the data as comma separated values data
